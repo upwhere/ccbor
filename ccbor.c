@@ -79,6 +79,35 @@ int cbor_store_uint(struct cbor_t*storage,const uint8_t additional,const int str
 	return EXIT_SUCCESS;
 }
 
+struct cbor_nint_t {
+	struct cbor_t base;
+	const uint64_t nvalue;
+};
+
+int cbor_store_nint(struct cbor_t*storage,const uint8_t additional, const int stream)
+{
+	if(storage!=NULL && storage->next!=NULL)return 2;
+
+	struct cbor_nint_t n= {
+		.base= {
+			.major=cbor_major_nint,
+			.next=NULL,
+		},
+		.nvalue=cbor_value_uint(additional,stream)-1,
+	},*fresh=malloc(sizeof*fresh);
+
+	if(fresh==NULL)return 1;
+	if(n.nvalue==-1&&additional!=1)return 3;
+
+	memcpy(fresh,&n,sizeof*fresh);
+
+	if(storage==NULL)
+		storage=&fresh->base;
+	else
+		storage->next=&fresh->base;
+	return EXIT_SUCCESS;
+}
+
 struct cbor_tag_t {
 	struct cbor_t base;
 	const uint64_t value;
@@ -110,7 +139,7 @@ int cbor_store_tag(struct cbor_t*storage,const uint8_t additional, const int str
 
 int(*const cbor_store[cbor_major_t_max])(struct cbor_t*,const uint8_t,const int stream) = {
 	&cbor_store_uint,
-	NULL,//&cbor_store_nint,
+	&cbor_store_nint,
 	NULL,//&cbor_store_bstr,
 	NULL,//&cbor_store_tstr,
 	NULL,//&cbor_store_arr,

@@ -10,7 +10,7 @@ int main(void)
 	px=x.next;
 	while(px!=NULL)
 	{
-		printf("bor: %d :: %llu -> %p\n",px->major,(long long unsigned int)((struct cbor_uint_t*)px)->value,(void*)px->next);
+		printf("bor: %d :: %llu\n",px->major>>5,(long long unsigned int)((struct cbor_uint_t*)px)->value);
 		px=px->next;
 	}
 }
