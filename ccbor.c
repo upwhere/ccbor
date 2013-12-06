@@ -105,7 +105,7 @@ uint64_t cbor_value_uint(const uint8_t additional,const int stream)
 
 int cbor_store_uint(struct cbor_t*storage,const uint8_t additional,const int stream)
 {
-	if(storage!=NULL && storage->next!=NULL)return 2;
+	if(storage==NULL || storage->next!=NULL)return 2;
 	
 	struct cbor_uint_t c= {
 		.base= {
@@ -119,10 +119,7 @@ int cbor_store_uint(struct cbor_t*storage,const uint8_t additional,const int str
 	
 	memcpy(fresh,&c,sizeof*fresh);
 
-	if(storage==NULL)
-		storage=&fresh->base;
-	else
-		storage->next=&fresh->base;
+	storage->next=&fresh->base;
 	return EXIT_SUCCESS;
 }
 
@@ -133,14 +130,14 @@ struct cbor_nint_t {
 
 int cbor_store_nint(struct cbor_t*storage,const uint8_t additional, const int stream)
 {
-	if(storage!=NULL && storage->next!=NULL)return 2;
+	if(storage==NULL || storage->next!=NULL)return 2;
 
 	struct cbor_nint_t n= {
 		.base= {
 			.major=cbor_major_nint,
 			.next=NULL,
 		},
-		.nvalue=cbor_value_uint(additional,stream)-1,
+		.nvalue=cbor_value_uint(additional,stream),
 	},*fresh=malloc(sizeof*fresh);
 
 	if(fresh==NULL)return 1;
@@ -148,11 +145,89 @@ int cbor_store_nint(struct cbor_t*storage,const uint8_t additional, const int st
 
 	memcpy(fresh,&n,sizeof*fresh);
 
-	if(storage==NULL)
-		storage=&fresh->base;
-	else
-		storage->next=&fresh->base;
+	storage->next=&fresh->base;
 	return EXIT_SUCCESS;
+}
+
+struct cbor_bstr_t {
+	struct cbor_t base;
+	/* it is assumed size_t is at least as large as uint64_t */
+	const size_t length;
+	uint8_t const*const bytestring;
+};
+
+int cbor_store_bstr(struct cbor_t*storage,const uint8_t additional,const int stream)
+{
+	if(storage==NULL || storage->next!=NULL)return 2;
+	{
+
+		/* it is assumed size_t is at least as large as uint64_t */	
+		size_t length=cbor_value_uint(additional,stream);
+
+		// TODO: indefinite byte strings
+
+		uint8_t*bytestring=malloc(length);
+
+		if(bytestring==NULL)return 1;
+		{
+			if(read(stream,bytestring,length)<length)return 3;
+			{
+				struct cbor_bstr_t b= {
+					.base= {
+						.major=cbor_major_bstr,
+						.next=NULL,
+					},
+					.length=length,
+					.bytestring=bytestring,
+				},*fresh=malloc(sizeof*fresh);
+
+				if(fresh==NULL)return 1;
+				memcpy(fresh,&b,sizeof*fresh);
+
+				storage->next=&fresh->base;
+			}
+		}
+		return EXIT_SUCCESS;
+	}
+}
+
+struct cbor_tstr_t {
+	struct cbor_t base;
+	const size_t length;
+	char const*const text;
+};
+
+int cbor_store_tstr(struct cbor_t*storage,const uint8_t additional,const int stream)
+{
+	if(storage==NULL || storage->next!=NULL)return 2;
+	{
+		size_t length=cbor_value_uint(additional,stream);
+
+		// TODO: indefinite text strings
+
+		char*text=malloc(length);
+
+		if(text==NULL)return 1;
+		{
+			if(read(stream,text,length)<length)return 3;
+			{
+					struct cbor_tstr_t t= {
+						.base= {
+							.major=cbor_major_tstr,
+							.next=NULL,
+						},
+						.length=length,
+						.text=text,
+					},*fresh=malloc(sizeof*fresh);
+
+					if(fresh==NULL)return 1;
+					memcpy(fresh,&t,sizeof*fresh);
+
+					storage->next=&fresh->base;
+			}
+		}
+		return EXIT_SUCCESS;
+	}
 }
 
 struct cbor_tag_t {
@@ -162,7 +237,7 @@ struct cbor_tag_t {
 
 int cbor_store_tag(struct cbor_t*storage,const uint8_t additional, const int stream)
 {
-	if(storage!=NULL && storage->next!=NULL)return 2;
+	if(storage==NULL || storage->next!=NULL)return 2;
 
 	struct cbor_tag_t t= {
 		.base= {
@@ -173,14 +248,10 @@ int cbor_store_tag(struct cbor_t*storage,const uint8_t additional, const int str
 	},*fresh=malloc(sizeof*fresh);
 
 	if(fresh==NULL)return 1;
-	if(t.value==0&&additional!=0)return 3;
 
 	memcpy(fresh,&t,sizeof*fresh);
 
-	if(storage==NULL)
-		storage=&fresh->base;
-	else
-		storage->next=&fresh->base;
+	storage->next=&fresh->base;
 	return EXIT_SUCCESS;
 }
 
