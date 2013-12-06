@@ -3,6 +3,43 @@
 #include<string.h>
 #include<unistd.h>
 
+#define host_little_endian 1
+
+uint16_t be16toh(const uint16_t bigendian)
+{
+	#if host_little_endian
+	return ((bigendian&0x00ff) <<8) |
+		((bigendian&0xff00) >>8);
+	#endif
+	return bigendian;
+}
+
+uint32_t be32toh(const uint32_t bigendian)
+{
+	#if host_little_endian
+	return ((bigendian&0x000000ff) <<24) |
+		((bigendian&0x0000ff00) <<8) |
+		((bigendian&0x00ff0000) >>8) |
+		((bigendian&0xff000000) >>24);
+	#endif
+	return bigendian;
+}
+
+uint64_t be64toh(const uint64_t bigendian)
+{
+	#if host_little_endian
+	return ((bigendian&0x00000000000000ff) <<56) |
+		((bigendian&0x000000000000ff00) <<40) |
+		((bigendian&0x0000000000ff0000) <<24) |
+		((bigendian&0x00000000ff000000) <<8) |
+		((bigendian&0x000000ff00000000) >>8) |
+		((bigendian&0x0000ff0000000000) >>24) |
+		((bigendian&0x00ff000000000000) >>40) |
+		((bigendian&0xff00000000000000) >>56);
+	#endif
+	return bigendian;
+}
+
 typedef enum cbor_major_t
 {
 	#define cbor_major_t_min cbor_major_uint
@@ -39,17 +76,28 @@ uint64_t cbor_value_uint(const uint8_t additional,const int stream)
 			(void)read(stream,&v,sizeof(uint8_t));
 			break;
 		case 25:
-			(void)read(stream,&v,sizeof(uint16_t));
+		{
+			uint16_t v16=0;
+			(void)read(stream,&v16,sizeof(uint16_t));
+			v=be16toh(v16);
 			break;
+		}
 		case 26:
-			(void)read(stream,&v,sizeof(uint32_t));
+		{
+			uint32_t v32=0;
+			(void)read(stream,&v32,sizeof(uint32_t));
+			v=be32toh(v32);
 			break;
+		}
 		case 27:
-			(void)read(stream,&v,sizeof(uint64_t));
+		{
+			uint64_t v64=0;
+			(void)read(stream,&v64,sizeof(uint64_t));
+			v=be64toh(v64);
 			break;
+		}
 		case 28:
 		case 30:
-			// if v == 0 && additional != 0: error
 			break;
 	}
 	return v;
@@ -68,7 +116,6 @@ int cbor_store_uint(struct cbor_t*storage,const uint8_t additional,const int str
 	},*fresh=malloc(sizeof*fresh);
 
 	if(fresh==NULL)return 1;
-	if(c.value==0&&additional!=0)return 3;
 	
 	memcpy(fresh,&c,sizeof*fresh);
 
