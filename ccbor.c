@@ -2,6 +2,7 @@
 #include<stdlib.h>
 #include<string.h>
 #include<unistd.h>
+#include<stdbool.h>
 
 #define host_little_endian 1
 
@@ -56,10 +57,27 @@ typedef enum cbor_major_t
 	#define cbor_major_mask cbor_major_uint | cbor_major_nint | cbor_major_bstr | cbor_major_tstr | cbor_major_arr | cbor_major_map | cbor_major_tag | cbor_major_flt
 } cbor_major_t;
 
+typedef enum cbor_additional_t
+{
+	cbor_additional_indefinite = 31,
+} cbor_additional_t;
+
+uint8_t cbor_major_of(uint8_t item)
+{
+	return (item& (cbor_major_mask))>>5;
+}
+
+uint8_t cbor_additional_of(uint8_t item)
+{
+	return item& ~(cbor_major_mask);
+}
+
 struct cbor_t {
 	const cbor_major_t major;
 	struct cbor_t*next;
 };
+
+#define cbor_BREAK 0xff
 
 struct cbor_uint_t {
 	struct cbor_t base;
@@ -106,21 +124,23 @@ uint64_t cbor_value_uint(const uint8_t additional,const int stream)
 int cbor_store_uint(struct cbor_t*storage,const uint8_t additional,const int stream)
 {
 	if(storage==NULL || storage->next!=NULL)return 2;
-	
-	struct cbor_uint_t c= {
-		.base= {
-			.major=cbor_major_uint,
-			.next=NULL,
-		},
-		.value=cbor_value_uint(additional,stream),
-	},*fresh=malloc(sizeof*fresh);
+	{
+		
+		struct cbor_uint_t c= {
+			.base= {
+				.major=cbor_major_uint,
+				.next=NULL,
+			},
+			.value=cbor_value_uint(additional,stream),
+		},*fresh=malloc(sizeof*fresh);
 
-	if(fresh==NULL)return 1;
-	
-	memcpy(fresh,&c,sizeof*fresh);
+		if(fresh==NULL)return 1;
+		
+		memcpy(fresh,&c,sizeof*fresh);
 
-	storage->next=&fresh->base;
-	return EXIT_SUCCESS;
+		storage->next=&fresh->base;
+		return EXIT_SUCCESS;
+	}
 }
 
 struct cbor_nint_t {
@@ -141,7 +161,11 @@ int cbor_store_nint(struct cbor_t*storage,const uint8_t additional, const int st
 	},*fresh=malloc(sizeof*fresh);
 
 	if(fresh==NULL)return 1;
-	if(n.nvalue==-1&&additional!=1)return 3;
+	if(n.nvalue==-1&&additional!=1)
+	{
+		free(fresh);
+		return 3;
+	}
 
 	memcpy(fresh,&n,sizeof*fresh);
 
@@ -156,60 +180,129 @@ struct cbor_bstr_t {
 	uint8_t const*const bytestring;
 };
 
+static void recursive_naive_cbor_free(struct cbor_t*listitem)
+{
+	if(listitem==NULL)return;
+	recursive_naive_cbor_free(listitem->next);
+	free(listitem);
+	return;
+}
+
+static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, const int stream)
+{
+	/* it is assumed size_t is at least as large as uint64_t */	
+	size_t length=cbor_value_uint(additional,stream);
+
+	uint8_t*bytestring=malloc(length);
+
+	if(bytestring==NULL)return 1;
+	{
+		if(read(stream,bytestring,length)<length)return 3;
+		{
+			struct cbor_bstr_t b= {
+				.base= {
+					.major=cbor_major_bstr,
+					.next=NULL,
+				},
+				.length=length,
+				.bytestring=bytestring,
+			},*fresh=malloc(sizeof*fresh);
+
+			if(fresh==NULL)return 1;
+			memcpy(fresh,&b,sizeof*fresh);
+
+			storage->next=&fresh->base;
+		}
+	}
+	return EXIT_SUCCESS;
+}
+
 int cbor_store_bstr(struct cbor_t*storage,const uint8_t additional,const int stream)
 {
 	if(storage==NULL || storage->next!=NULL)return 2;
+
+	if(additional==cbor_additional_indefinite)
 	{
-
-		/* it is assumed size_t is at least as large as uint64_t */	
-		size_t length=cbor_value_uint(additional,stream);
-
-		// TODO: indefinite byte strings
-
-		uint8_t*bytestring=malloc(length);
-
-		if(bytestring==NULL)return 1;
+		/* we'll assume the entire indefinite array fits into memory because what else are we going to do with it? */
+		size_t total_length=0;
+		uint8_t *bstr,*bstrindex;
+		struct cbor_t indefinite,*next=&indefinite;
+		while(true)
 		{
-			if(read(stream,bytestring,length)<length)return 3;
-			{
-				struct cbor_bstr_t b= {
-					.base= {
-						.major=cbor_major_bstr,
-						.next=NULL,
-					},
-					.length=length,
-					.bytestring=bytestring,
-				},*fresh=malloc(sizeof*fresh);
+			int store_attempt_ret;
+			uint8_t item;
+			if(read(stream,&item,sizeof item) < sizeof item)return 3;
 
-				if(fresh==NULL)return 1;
-				memcpy(fresh,&b,sizeof*fresh);
+			if(item==cbor_BREAK)break;
 
-				storage->next=&fresh->base;
-			}
+			if(cbor_major_of(item)!=(cbor_major_bstr>>5))return 3;
+
+			if((store_attempt_ret=store_definite_bstr(next,cbor_additional_of(item),stream))!=EXIT_SUCCESS)return store_attempt_ret;
+
+			next=next->next;
+			total_length+=((struct cbor_bstr_t*)next)->length;
 		}
-		return EXIT_SUCCESS;
+
+		if((bstrindex=bstr=malloc(total_length))==NULL)return 1;
+
+		next=&indefinite;
+
+		while((next=next->next)!=NULL)
+		{
+			memcpy(bstrindex,((struct cbor_bstr_t*)next)->bytestring,((struct cbor_bstr_t*)next)->length);
+			free((char*)((struct cbor_bstr_t*)next)->bytestring);
+			bstrindex+=((struct cbor_bstr_t*)next)->length;	
+		}
+
+	recursive_naive_cbor_free(indefinite.next);
+
+	{
+		struct cbor_bstr_t b={
+			.base={
+				.major=cbor_major_bstr,
+				.next=NULL,
+			},
+			.length=total_length,
+			.bytestring=bstr,
+		},*fresh=malloc(sizeof*fresh);
+
+		if(fresh==NULL)
+		{
+			free(bstr);
+			return 1;
+		}
+		
+		memcpy(fresh,&b,sizeof*fresh);
+		storage->next=&fresh->base;
 	}
+
+	return EXIT_SUCCESS;
+}
+else
+{
+	return store_definite_bstr(storage,additional,stream);
+}
 }
 
 struct cbor_tstr_t {
-	struct cbor_t base;
-	const size_t length;
-	char const*const text;
+struct cbor_t base;
+const size_t length;
+char const*const text;
 };
 
 int cbor_store_tstr(struct cbor_t*storage,const uint8_t additional,const int stream)
 {
-	if(storage==NULL || storage->next!=NULL)return 2;
+if(storage==NULL || storage->next!=NULL)return 2;
+{
+	size_t length=cbor_value_uint(additional,stream);
+
+	// TODO: indefinite text strings
+
+	char*text=malloc(length);
+
+	if(text==NULL)return 1;
 	{
-		size_t length=cbor_value_uint(additional,stream);
-
-		// TODO: indefinite text strings
-
-		char*text=malloc(length);
-
-		if(text==NULL)return 1;
-		{
-			if(read(stream,text,length)<length)return 3;
+		if(read(stream,text,length)<length)return 3;
 			{
 					struct cbor_tstr_t t= {
 						.base= {
@@ -258,23 +351,13 @@ int cbor_store_tag(struct cbor_t*storage,const uint8_t additional, const int str
 int(*const cbor_store[cbor_major_t_max])(struct cbor_t*,const uint8_t,const int stream) = {
 	&cbor_store_uint,
 	&cbor_store_nint,
-	NULL,//&cbor_store_bstr,
+	&cbor_store_bstr,
 	NULL,//&cbor_store_tstr,
 	NULL,//&cbor_store_arr,
 	NULL,//&cbor_store_map,
 	&cbor_store_tag,
 	NULL,//&cbor_store_flt,
 };
-
-uint8_t cbor_major_of(uint8_t item)
-{
-	return (item& (cbor_major_mask))>>5;
-}
-
-uint8_t cbor_additional_of(uint8_t item)
-{
-	return item& ~(cbor_major_mask);
-}
 
 int decode(const int stream,struct cbor_t*storage)
 {
