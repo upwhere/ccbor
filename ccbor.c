@@ -11,6 +11,7 @@ uint16_t be16toh(const uint16_t bigendian)
 	#if host_little_endian
 	return ((bigendian&0x00ff) <<8) |
 		((bigendian&0xff00) >>8);
+	/*@notreached@*/
 	#endif
 	return bigendian;
 }
@@ -22,6 +23,7 @@ uint32_t be32toh(const uint32_t bigendian)
 		((bigendian&0x0000ff00) <<8) |
 		((bigendian&0x00ff0000) >>8) |
 		((bigendian&0xff000000) >>24);
+	/*@notreached@*/
 	#endif
 	return bigendian;
 }
@@ -37,6 +39,7 @@ uint64_t be64toh(const uint64_t bigendian)
 		((bigendian&0x0000ff0000000000) >>24) |
 		((bigendian&0x00ff000000000000) >>40) |
 		((bigendian&0xff00000000000000) >>56);
+	/*@notreached@*/
 	#endif
 	return bigendian;
 }
