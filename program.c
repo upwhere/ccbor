@@ -16,7 +16,7 @@ void printf_cbor_t(struct cbor_t*item)
 		case 2:
 		{
 			printf( "\t%d (bstr)\t:: ", item->major>>5);
-			for(int i=0;i<((struct cbor_bstr_t*)item)->length;i++)
+			for(size_t i=0;i<((struct cbor_bstr_t*)item)->length;i++)
 			{
 				printf( "%02x ", ((struct cbor_bstr_t*)item)->bytestring[i] );
 			}

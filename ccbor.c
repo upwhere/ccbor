@@ -161,7 +161,7 @@ int cbor_store_nint(struct cbor_t*storage,const uint8_t additional, const int st
 	},*fresh=malloc(sizeof*fresh);
 
 	if(fresh==NULL)return 1;
-	if(n.nvalue==-1&&additional!=1)
+	if(n.nvalue==(uint64_t)-1&&additional!=1)
 	{
 		free(fresh);
 		return 3;
@@ -197,7 +197,7 @@ static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, c
 
 	if(bytestring==NULL)return 1;
 	{
-		if(read(stream,bytestring,length)<length)return 3;
+		if(read(stream,bytestring,length)<(ssize_t)length)return 3;
 		{
 			struct cbor_bstr_t b= {
 				.base= {
@@ -231,7 +231,7 @@ int cbor_store_bstr(struct cbor_t*storage,const uint8_t additional,const int str
 		{
 			int store_attempt_ret;
 			uint8_t item;
-			if(read(stream,&item,sizeof item) < sizeof item)return 3;
+			if(read(stream,&item,sizeof item) < (ssize_t) sizeof item)return 3;
 
 			if(item==cbor_BREAK)break;
 
@@ -302,7 +302,7 @@ if(storage==NULL || storage->next!=NULL)return 2;
 
 	if(text==NULL)return 1;
 	{
-		if(read(stream,text,length)<length)return 3;
+		if(read(stream,text,length)< (ssize_t)length)return 3;
 			{
 					struct cbor_tstr_t t= {
 						.base= {
