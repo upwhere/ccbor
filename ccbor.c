@@ -119,6 +119,7 @@ uint64_t cbor_value_uint(const uint8_t additional,const int stream)
 		}
 		case 28:
 		case 30:
+		case 31:
 			break;
 	}
 	return v;
@@ -180,7 +181,7 @@ struct cbor_bstr_t {
 	struct cbor_t base;
 	/* it is assumed size_t is at least as large as uint64_t */
 	const size_t length;
-	uint8_t const*const bytestring;
+	uint8_t const*const string;
 };
 
 static void recursive_naive_cbor_free(struct cbor_t*listitem)
@@ -193,138 +194,149 @@ static void recursive_naive_cbor_free(struct cbor_t*listitem)
 
 static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, const int stream)
 {
-	/* it is assumed size_t is at least as large as uint64_t */	
+	/* it is assumed size_t is at least as large as uint64_t */
+	/** How many bytes follow */
 	size_t length=cbor_value_uint(additional,stream);
 
-	uint8_t*bytestring=malloc(length);
+	uint8_t*string=malloc(length);
 
-	if(bytestring==NULL)return 1;
+	if(string==NULL)return 1;
+	if(read(stream,string,length)<(ssize_t)length)
 	{
-		if(read(stream,bytestring,length)<(ssize_t)length)return 3;
-		{
-			struct cbor_bstr_t b= {
-				.base= {
-					.major=cbor_major_bstr,
-					.next=NULL,
-				},
-				.length=length,
-				.bytestring=bytestring,
-			},*fresh=malloc(sizeof*fresh);
-
-			if(fresh==NULL)return 1;
-			memcpy(fresh,&b,sizeof*fresh);
-
-			storage->next=&fresh->base;
-		}
+		free(string);
+		return 3;
 	}
-	return EXIT_SUCCESS;
-}
-
-int cbor_store_bstr(struct cbor_t*storage,const uint8_t additional,const int stream)
-{
-	if(storage==NULL || storage->next!=NULL)return 2;
-
-	if(additional==cbor_additional_indefinite)
 	{
-		/* we'll assume the entire indefinite array fits into memory because what else are we going to do with it? */
-		size_t total_length=0;
-		uint8_t *bstr,*bstrindex;
-		struct cbor_t indefinite,*next=&indefinite;
-		while(true)
-		{
-			int store_attempt_ret;
-			uint8_t item;
-			if(read(stream,&item,sizeof item) < (ssize_t) sizeof item)return 3;
-
-			if(item==cbor_BREAK)break;
-
-			if(cbor_major_of(item)!=(cbor_major_bstr>>5))return 3;
-
-			if((store_attempt_ret=store_definite_bstr(next,cbor_additional_of(item),stream))!=EXIT_SUCCESS)return store_attempt_ret;
-
-			next=next->next;
-			total_length+=((struct cbor_bstr_t*)next)->length;
-		}
-
-		if((bstrindex=bstr=malloc(total_length))==NULL)return 1;
-
-		next=&indefinite;
-
-		while((next=next->next)!=NULL)
-		{
-			memcpy(bstrindex,((struct cbor_bstr_t*)next)->bytestring,((struct cbor_bstr_t*)next)->length);
-			free((char*)((struct cbor_bstr_t*)next)->bytestring);
-			bstrindex+=((struct cbor_bstr_t*)next)->length;	
-		}
-
-	recursive_naive_cbor_free(indefinite.next);
-
-	{
-		struct cbor_bstr_t b={
-			.base={
+		struct cbor_bstr_t b= {
+			.base= {
 				.major=cbor_major_bstr,
 				.next=NULL,
 			},
-			.length=total_length,
-			.bytestring=bstr,
+			.length=length,
+			.string=string,
 		},*fresh=malloc(sizeof*fresh);
 
 		if(fresh==NULL)
 		{
-			free(bstr);
+			free(string);
 			return 1;
 		}
-		
 		memcpy(fresh,&b,sizeof*fresh);
+
 		storage->next=&fresh->base;
 	}
-
 	return EXIT_SUCCESS;
 }
-else
-{
-	return store_definite_bstr(storage,additional,stream);
+
+#define GENERATE_STORE_STRINGLIKE(major_shorthand,stringlike_type) int cbor_store_##major_shorthand(struct cbor_t*storage,const uint8_t additional,const int stream) \
+{ \
+	if(storage==NULL || storage->next!=NULL)return 2; \
+ \
+	if(additional!=cbor_additional_indefinite) \
+	{ \
+		return store_definite_##major_shorthand(storage,additional,stream); \
+	} \
+	else \
+	{ \
+		/* we'll assume the entire indefinite array fits into memory because what else are we going to do with it? */ \
+		size_t total_length=0; \
+		stringlike_type *str,*strindex; \
+		struct cbor_t indefinite,*next=&indefinite; \
+		while(true) \
+		{ \
+			int store_attempt_ret; \
+			uint8_t item; \
+			if(read(stream,&item,sizeof item) < (ssize_t) sizeof item)return 3; \
+ \
+			if(item==cbor_BREAK)break; \
+ \
+			if(cbor_major_of(item)!=(cbor_major_##major_shorthand>>5))return 3; \
+ \
+			if((store_attempt_ret=store_definite_##major_shorthand(next,cbor_additional_of(item),stream))!=EXIT_SUCCESS)return store_attempt_ret; \
+ \
+			next=next->next; \
+			total_length+=((struct cbor_##major_shorthand##_t*)next)->length; \
+		} \
+ \
+		if((strindex=str=malloc(total_length))==NULL)return 1; \
+ \
+		next=&indefinite; \
+ \
+		while((next=next->next)!=NULL) \
+		{ \
+			memcpy(strindex,((struct cbor_##major_shorthand##_t*)next)->string,((struct cbor_##major_shorthand##_t*)next)->length); \
+			free((stringlike_type*)((struct cbor_##major_shorthand##_t*)next)->string); \
+			strindex+=((struct cbor_##major_shorthand##_t*)next)->length; \
+		} \
+ \
+		recursive_naive_cbor_free(indefinite.next); \
+ \
+		{ \
+			struct cbor_##major_shorthand##_t s={ \
+				.base={ \
+					.major=cbor_major_##major_shorthand, \
+					.next=NULL, \
+				}, \
+				.length=total_length, \
+				.string=str, \
+			},*fresh=malloc(sizeof*fresh); \
+ \
+			if(fresh==NULL) \
+			{ \
+				free(str); \
+				return 1; \
+			} \
+ \
+			memcpy(fresh,&s,sizeof*fresh); \
+			storage->next=&fresh->base; \
+		} \
+ \
+		return EXIT_SUCCESS; \
+	} \
 }
-}
+
+GENERATE_STORE_STRINGLIKE(bstr,uint8_t)
 
 struct cbor_tstr_t {
-struct cbor_t base;
-const size_t length;
-char const*const text;
+	struct cbor_t base;
+	const size_t length;
+	char const*const string;
 };
 
-int cbor_store_tstr(struct cbor_t*storage,const uint8_t additional,const int stream)
+static int store_definite_tstr(struct cbor_t*storage,const uint8_t additional, const int stream)
 {
-if(storage==NULL || storage->next!=NULL)return 2;
-{
+	/* it is assumed size_t is at least as large as uint64_t */
+	/** How many bytes follow */
 	size_t length=cbor_value_uint(additional,stream);
 
-	// TODO: indefinite text strings
+	uint8_t*bytestring=calloc(length+1,sizeof*bytestring);
 
-	char*text=malloc(length);
-
-	if(text==NULL)return 1;
+	if(bytestring==NULL)return 1;
+	if(read(stream,bytestring,length)<(ssize_t)length)
 	{
-		if(read(stream,text,length)< (ssize_t)length)return 3;
-			{
-					struct cbor_tstr_t t= {
-						.base= {
-							.major=cbor_major_tstr,
-							.next=NULL,
-						},
-						.length=length,
-						.text=text,
-					},*fresh=malloc(sizeof*fresh);
-
-					if(fresh==NULL)return 1;
-					memcpy(fresh,&t,sizeof*fresh);
-
-					storage->next=&fresh->base;
-			}
-		}
-		return EXIT_SUCCESS;
+		free(bytestring);
+		return 3;
 	}
+	{
+		struct cbor_tstr_t t= {
+			.base= {
+				.major=cbor_major_tstr,
+				.next=NULL,
+			},
+			.length=length+sizeof'\0',
+			.string=(char*)bytestring,
+		},*fresh=malloc(sizeof*fresh);
+
+		if(fresh==NULL)return 1;
+
+		memcpy(fresh,&t,sizeof*fresh);
+		
+		storage->next=&fresh->base;
+	}
+	return EXIT_SUCCESS;
 }
+
+GENERATE_STORE_STRINGLIKE(tstr,char)
 
 struct cbor_tag_t {
 	struct cbor_t base;
@@ -355,7 +367,7 @@ int(*const cbor_store[cbor_major_t_max])(struct cbor_t*,const uint8_t,const int 
 	&cbor_store_uint,
 	&cbor_store_nint,
 	&cbor_store_bstr,
-	NULL,//&cbor_store_tstr,
+	&cbor_store_tstr,
 	NULL,//&cbor_store_arr,
 	NULL,//&cbor_store_map,
 	&cbor_store_tag,

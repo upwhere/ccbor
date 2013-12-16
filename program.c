@@ -14,15 +14,16 @@ void printf_cbor_t(struct cbor_t*item)
 			printf( "\t%d (-int)\t:: 1-%llu\n (= -%llu?)\n", item->major>>5, ((unsigned long long int)1)-(unsigned long long int)((struct cbor_nint_t*)item)->nvalue,(unsigned long long int)((struct cbor_nint_t*)item)->nvalue );
 			break;
 		case 2:
-		{
 			printf( "\t%d (bstr)\t:: ", item->major>>5);
 			for(size_t i=0;i<((struct cbor_bstr_t*)item)->length;i++)
 			{
-				printf( "%02x ", ((struct cbor_bstr_t*)item)->bytestring[i] );
+				printf( "%02x ", ((struct cbor_bstr_t*)item)->string[i] );
 			}
 			putchar( '\n' );
 			break;
-		}
+		case 3:
+			printf( "\t%d (tstr)\t:: %s\n", item->major>>5, ((struct cbor_tstr_t*)item)->string);
+			break;
 	}
 }
 
