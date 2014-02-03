@@ -228,7 +228,7 @@ static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, c
 	return EXIT_SUCCESS;
 }
 
-#define GENERATE_STORE_STRINGLIKE(major_shorthand,stringlike_type) int cbor_store_##major_shorthand(struct cbor_t*storage,const uint8_t additional,const int stream) \
+#define GENERATE_STORE_STRINGLIKE(major_shorthand,stringlike_type,heed_nullterm) int cbor_store_##major_shorthand(struct cbor_t*storage,const uint8_t additional,const int stream) \
 { \
 	if(storage==NULL || storage->next!=NULL)return 2; \
  \
@@ -252,23 +252,29 @@ static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, c
  \
 			if(cbor_major_of(item)!=(cbor_major_##major_shorthand>>5))return 3; \
  \
-			if((store_attempt_ret=store_definite_##major_shorthand(next,cbor_additional_of(item),stream))!=EXIT_SUCCESS)return store_attempt_ret; \
+			if((store_attempt_ret=store_definite_bstr(next,cbor_additional_of(item),stream))!=EXIT_SUCCESS)return store_attempt_ret; \
  \
 			next=next->next; \
-			total_length+=((struct cbor_##major_shorthand##_t*)next)->length; \
+			total_length+=((struct cbor_bstr_t*)next)->length; \
 		} \
  \
-		if((strindex=str=malloc(total_length))==NULL)return 1; \
+		if((strindex=str=malloc(total_length+ (heed_nullterm?sizeof'\0' :0) ) ) ==NULL)return 1; \
  \
+		/* Rewind to first element */ \
 		next=&indefinite; \
  \
 		while((next=next->next)!=NULL) \
 		{ \
-			memcpy(strindex,((struct cbor_##major_shorthand##_t*)next)->string,((struct cbor_##major_shorthand##_t*)next)->length); \
+			memcpy( \
+				strindex, \
+				((struct cbor_##major_shorthand##_t*)next)->string, \
+				((struct cbor_##major_shorthand##_t*)next)->length); \
 			free((stringlike_type*)((struct cbor_##major_shorthand##_t*)next)->string); \
 			strindex+=((struct cbor_##major_shorthand##_t*)next)->length; \
 		} \
+		if(heed_nullterm)*strindex='\0'; \
  \
+		/* Individual strings already freed */ \
 		recursive_naive_cbor_free(indefinite.next); \
  \
 		{ \
@@ -295,7 +301,7 @@ static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, c
 	} \
 }
 
-GENERATE_STORE_STRINGLIKE(bstr,uint8_t)
+GENERATE_STORE_STRINGLIKE(bstr,uint8_t,false)
 
 struct cbor_tstr_t {
 	struct cbor_t base;
@@ -336,7 +342,7 @@ static int store_definite_tstr(struct cbor_t*storage,const uint8_t additional, c
 	return EXIT_SUCCESS;
 }
 
-GENERATE_STORE_STRINGLIKE(tstr,char)
+GENERATE_STORE_STRINGLIKE(tstr,char,true)
 
 struct cbor_tag_t {
 	struct cbor_t base;
