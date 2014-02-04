@@ -6,7 +6,7 @@
 
 #define host_little_endian 1
 
-uint16_t be16toh(const uint16_t bigendian)
+static uint16_t be16toh(const uint16_t bigendian)
 {
 	#if host_little_endian
 	return ((bigendian&0x00ff) <<8) |
@@ -16,7 +16,7 @@ uint16_t be16toh(const uint16_t bigendian)
 	return bigendian;
 }
 
-uint32_t be32toh(const uint32_t bigendian)
+static uint32_t be32toh(const uint32_t bigendian)
 {
 	#if host_little_endian
 	return ((bigendian&0x000000ff) <<24) |
@@ -28,7 +28,7 @@ uint32_t be32toh(const uint32_t bigendian)
 	return bigendian;
 }
 
-uint64_t be64toh(const uint64_t bigendian)
+static uint64_t be64toh(const uint64_t bigendian)
 {
 	#if host_little_endian
 	return ((bigendian&0x00000000000000ff) <<56) |
@@ -79,6 +79,8 @@ struct cbor_t {
 	const cbor_major_t major;
 	struct cbor_t*next;
 };
+
+int(*const cbor_store[cbor_major_t_max])(struct cbor_t*,const uint8_t,const int stream);
 
 #define cbor_BREAK 0xff
 
@@ -194,6 +196,8 @@ static void recursive_naive_cbor_free(struct cbor_t*listitem)
 
 static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, const int stream)
 {
+	if(storage==NULL || storage->next!=NULL)return 2;
+
 	/* it is assumed size_t is at least as large as uint64_t */
 	/** How many bytes follow */
 	size_t length=cbor_value_uint(additional,stream);
@@ -311,6 +315,8 @@ struct cbor_tstr_t {
 
 static int store_definite_tstr(struct cbor_t*storage,const uint8_t additional, const int stream)
 {
+	if(storage==NULL || storage->next!=NULL)return 2;
+
 	/* it is assumed size_t is at least as large as uint64_t */
 	/** How many bytes follow */
 	size_t length=cbor_value_uint(additional,stream);
@@ -344,6 +350,65 @@ static int store_definite_tstr(struct cbor_t*storage,const uint8_t additional, c
 
 GENERATE_STORE_STRINGLIKE(tstr,char,true)
 
+struct cbor_arr_t{
+	struct cbor_t base;
+	const size_t length;
+	struct cbor_t **const array;
+};
+
+int cbor_store_arr(struct cbor_t*storage, const uint8_t additional, const int stream)
+{
+	if(storage==NULL || storage->next!=NULL)return 2;
+
+	const size_t length=cbor_value_uint(additional,stream);
+	struct cbor_t **array = malloc(length*sizeof(struct cbor_t const *));
+
+	struct cbor_t head= {
+		.major=cbor_major_tag,
+		.next=NULL,
+	},*element=&head;
+
+	int store_status;
+	
+	for(size_t i=0;i<length;i++)
+	{
+		uint8_t item;
+		if(read(stream,&item,sizeof item)<(ssize_t)sizeof item)
+		{
+			return EXIT_FAILURE;
+		}
+
+		store_status=cbor_store[cbor_major_of(item)](element,cbor_additional_of(item),stream);
+		if(store_status!=EXIT_SUCCESS)
+		{
+			return store_status;
+		}
+
+		//if(element!=NULL)element=element->next;
+
+		array[i]=element->next;
+		element->next=NULL;
+	}
+	{
+		struct cbor_arr_t a= {
+			.base= {
+				.major=cbor_major_arr,
+				.next=NULL,
+			} ,
+			.length=length,
+			.array=array,
+		} , *fresh= malloc(sizeof*fresh);
+
+		if(fresh==NULL)return 1;
+
+		memcpy(fresh, &a,sizeof*fresh);
+
+		storage->next=&fresh->base;
+	}
+
+	return EXIT_SUCCESS;
+}
+
 struct cbor_tag_t {
 	struct cbor_t base;
 	const uint64_t value;
@@ -374,7 +439,7 @@ int(*const cbor_store[cbor_major_t_max])(struct cbor_t*,const uint8_t,const int 
 	&cbor_store_nint,
 	&cbor_store_bstr,
 	&cbor_store_tstr,
-	NULL,//&cbor_store_arr,
+	&cbor_store_arr,
 	NULL,//&cbor_store_map,
 	&cbor_store_tag,
 	NULL,//&cbor_store_flt,
@@ -382,7 +447,7 @@ int(*const cbor_store[cbor_major_t_max])(struct cbor_t*,const uint8_t,const int 
 
 int decode(const int stream,struct cbor_t*storage)
 {
-	int wat=0;
+	int store_status=0;
 	struct cbor_t*store=storage;
 	do
 	{
@@ -391,12 +456,16 @@ int decode(const int stream,struct cbor_t*storage)
 		if(read(stream,&item,sizeof item) < 1 )
 		{
 			break;
-			return EXIT_FAILURE;
 		}
 
-		wat=cbor_store[cbor_major_of(item)](store,cbor_additional_of(item),stream);
+		store_status=cbor_store[cbor_major_of(item)](store,cbor_additional_of(item),stream);
+		if(store_status!=EXIT_SUCCESS)
+		{
+			return store_status;
+		}
+
 		if(store!=NULL)store=store->next;
 	}
-	while(wat==0);
+	while(true);
 	return EXIT_SUCCESS;
 }

@@ -8,6 +8,7 @@ void printf_cbor_t(struct cbor_t*item)
 	switch(item->major>>5)
 	{
 		default:
+		case 0:
 			printf( "\t%d (+int)\t:: %llu\n",item->major>>5,(long long unsigned int)((struct cbor_uint_t*)item)->value);
 			break;
 		case 1:
@@ -23,6 +24,19 @@ void printf_cbor_t(struct cbor_t*item)
 			break;
 		case 3:
 			printf( "\t%d (tstr)\t:: %s\n", item->major>>5, ((struct cbor_tstr_t*)item)->string);
+			break;
+		case 4:;
+			struct cbor_t**x;
+			printf( "\t%d (arr )\t:: [\n", item->major>>5);
+			x=((struct cbor_arr_t*)item)->array;
+			for(size_t i=0;i<((struct cbor_arr_t*)item)->length;i++)
+			{
+				printf_cbor_t(x[i]);
+			}
+			printf( "\t       \t   ]\n" );
+			break;
+		case 6:
+			printf( "\t%d (tag )\t:: %llu\n",item->major>>5,(long long unsigned int)((struct cbor_uint_t*)item)->value);
 			break;
 	}
 }
