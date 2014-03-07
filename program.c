@@ -2,6 +2,7 @@
 #include<sys/stat.h>
 #include<fcntl.h>
 #include<stdint.h>
+#include<stdlib.h>
 
 #include"ccbor.h"
 #include"cbor_int.h"
@@ -13,10 +14,12 @@
 static void print_cbor_t(struct cbor_t*item,const unsigned int nindent)
 {
 	char indent[nindent+1];
-	unsigned int i;
-	for(i=0;i<nindent;i++ )
-		indent[i]= ' ';
-	indent[nindent]= '\0';
+	{
+		unsigned int i;
+		for(i=0;i<nindent;i++ )
+			indent[i]= ' ';
+		indent[nindent]= '\0';
+	}
 
 	switch(item->major>>5)
 	{
@@ -35,7 +38,7 @@ static void print_cbor_t(struct cbor_t*item,const unsigned int nindent)
 			{
 				printf( "%02x ", (unsigned int)((struct cbor_bstr_t*)item)->string[i] );
 			}
-			putchar( '\n' );
+			(void)putchar( '\n' );
 			break;
 		}
 		case 3:
@@ -67,6 +70,7 @@ static void print_cbor_t(struct cbor_t*item,const unsigned int nindent)
 				
 			}
 			printf( "\t%s        \t%s   ]\n",indent,indent);
+			break;
 		}	
 		case 6:
 			printf( "\t%s%d (tag )\t:: %llu\n",indent,item->major>>5,(long long unsigned int)((struct cbor_uint_t*)item)->value);
@@ -85,4 +89,5 @@ int main(void)
 		print_cbor_t(px,0);
 		px=px->next;
 	}
+	return EXIT_SUCCESS;
 }

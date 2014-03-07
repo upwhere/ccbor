@@ -7,7 +7,7 @@
 
 #include"cbor_int.h"
 
-static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, const int stream)
+static int store_definite_bstr(/*@out@*/struct cbor_t*storage,const uint8_t additional, const int stream)
 {
 	if(storage==NULL || storage->next!=NULL)return 2;
 	{
@@ -18,6 +18,7 @@ static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, c
 		uint8_t*const string=malloc(length);
 
 		if(string==NULL)return 1;
+		*string=0;
 		if(read(stream,string,length)<(ssize_t)length)
 		{
 			free(string);
@@ -40,7 +41,9 @@ static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, c
 			}
 			memcpy(fresh,&b,sizeof*fresh);
 
+			/*@-immediatetrans@*/
 			storage->next=&fresh->base;
+			/*@+immediatetrans@*/
 		}
 		return EXIT_SUCCESS;
 	}
@@ -56,24 +59,26 @@ static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, c
 	} \
 	else \
 	{ \
-		/* we'll assume the entire indefinite array fits into memory because what else are we going to do with it? */ \
 		size_t total_length=0; \
 		stringlike_type *str,*strindex; \
-		struct cbor_t indefinite,*next=&indefinite; \
+		struct cbor_t indefinite={.major=0xFF,.next=NULL,},*next=&indefinite; \
 		while(true) \
 		{ \
 			int store_attempt_ret; \
-			uint8_t item; \
+			uint8_t item=0; \
+			/* TODO: free old stuff */ \
 			if(read(stream,&item,sizeof item) < (ssize_t) sizeof item)return 3; \
  \
 			if(item==cbor_BREAK)break; \
  \
 			if(cbor_major_of(item)!=(cbor_major_##major_shorthand>>5))return 3; \
  \
-				/* FIXME: free the previously stored subitems */\
+			/* FIXME: free the previously stored subitems */ \
 			if((store_attempt_ret=store_definite_bstr(next,cbor_additional_of(item),stream))!=EXIT_SUCCESS)return store_attempt_ret; \
  \
+			if(next->next==NULL)return 2; \
 			next=next->next; \
+\
 			total_length+=((struct cbor_bstr_t*)next)->length; \
 		} \
  \
@@ -84,14 +89,15 @@ static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, c
  \
 		while((next=next->next)!=NULL) \
 		{ \
-			memcpy( \
-				strindex, \
-				((struct cbor_##major_shorthand##_t*)next)->string, \
-				((struct cbor_##major_shorthand##_t*)next)->length); \
-			free((stringlike_type*)((struct cbor_##major_shorthand##_t*)next)->string); \
-			strindex+=((struct cbor_##major_shorthand##_t*)next)->length; \
+			stringlike_type const*const stringpart = ((struct cbor_##major_shorthand##_t*)next)->string; \
+			const size_t partlength = ((struct cbor_##major_shorthand##_t*)next)->length; \
+\
+			memcpy(strindex,stringpart,partlength); \
+\
+			free((stringlike_type*)stringpart); \
+			strindex+=partlength; \
 		} \
-		if(heed_nullterm)*strindex=0; \
+		if(heed_nullterm)*strindex='\0'; \
  \
 		/* Individual strings already freed */ \
 		recursive_naive_cbor_free(indefinite.next); \
@@ -113,7 +119,9 @@ static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, c
 			} \
  \
 			memcpy(fresh,&s,sizeof*fresh); \
+			/*@-immediatetrans@*/ \
 			storage->next=&fresh->base; \
+			/*@+immediatetrans@*/ \
 		} \
  \
 		return EXIT_SUCCESS; \
@@ -151,7 +159,9 @@ static int store_definite_tstr(struct cbor_t*storage,const uint8_t additional, c
 
 			memcpy(fresh,&t,sizeof*fresh);
 
+			/*@-immediatetrans@*/
 			storage->next=&fresh->base;
+			/*@+immediatetrans@*/
 		}
 		return EXIT_SUCCESS;
 	}

@@ -6,7 +6,7 @@
 #include"cbor_map.h"
 #include"cbor_int.h"
 
-static int cbor_store_mapentry(struct cbor_mapentry_t*storage,const uint8_t key,const int stream)
+static int cbor_store_mapentry(/*@out@*/struct cbor_mapentry_t*storage,const uint8_t key,const int stream)
 {
 	if(storage==NULL)return 2;
 	if(key==cbor_BREAK)return 3;
@@ -18,9 +18,11 @@ static int cbor_store_mapentry(struct cbor_mapentry_t*storage,const uint8_t key,
 		struct cbor_t*pair=&head;
 
 		int store_attempt_ret;
-		uint8_t item;
+		uint8_t item=0;
 
 		if( (store_attempt_ret=cbor_store[cbor_major_of(key) ] (pair,cbor_additional_of(key),stream) ) !=EXIT_SUCCESS)return store_attempt_ret;
+
+		if(pair->next==NULL)return 2;
 
 		if(read(stream,&item,sizeof item) < (ssize_t) sizeof item)return 3;
 		// Break may not occur between a key and a value
@@ -65,13 +67,16 @@ static int cbor_store_definite_map(struct cbor_t*storage,const uint8_t additiona
 		//Grab all map entries
 		for(i=0;i<length;i++ )
 		{
-			uint8_t item;
+			uint8_t item=0;
 			if(read(stream,&item,sizeof item) < (ssize_t) sizeof item)
 			{
 				store_attempt_ret=3;
 				goto free;
 			}
-			if( (store_attempt_ret=cbor_store_mapentry(map_index,item,stream) ) !=EXIT_SUCCESS)goto free;
+
+			store_attempt_ret=cbor_store_mapentry(map_index,item,stream);
+			if(store_attempt_ret!=EXIT_SUCCESS)goto free;
+
 			++map_index;
 		}
 
@@ -91,10 +96,15 @@ static int cbor_store_definite_map(struct cbor_t*storage,const uint8_t additiona
 			}
 			memcpy(fresh,&m,sizeof*fresh);
 
+			/*@-immediatetrans@*/
 			storage->next=&fresh->base;
+			/*@+immediatetrans@*/
 		}
 
 		return EXIT_SUCCESS;free:
+		/*@-unreachable@*/
+		store_attempt_ret=EXIT_SUCCESS;
+		/*@+unreachable@*/
 		{
 			//FIXME: free whatever was constructed
 			return store_attempt_ret;
@@ -125,7 +135,7 @@ int cbor_store_map(struct cbor_t*storage,const uint8_t additional,const int stre
 		// Grab pairs from stream
 		while(true)
 		{
-			uint8_t item;
+			uint8_t item=0;
 
 			if(read(stream,&item,sizeof item) < (ssize_t) sizeof item)
 			{
@@ -150,14 +160,16 @@ int cbor_store_map(struct cbor_t*storage,const uint8_t additional,const int stre
 				goto free;
 			}
 
-			if( (store_attempt_ret=cbor_store_mapentry(list_index->e,item,stream) ) !=EXIT_SUCCESS)goto free;
+			store_attempt_ret=cbor_store_mapentry(list_index->e,item,stream);
+			if(store_attempt_ret!=EXIT_SUCCESS)goto free;
 			
 			++entry_count;
 		}
 
 		// Copy into map.
 		{
-			struct cbor_mapentry_t*destination=malloc((sizeof*destination)*entry_count),*destination_index=destination;
+			struct cbor_mapentry_t*destination=malloc((sizeof*destination)*entry_count);
+			struct cbor_mapentry_t*destination_index=destination;
 			if(destination==NULL)
 			{
 				store_attempt_ret=1;
@@ -166,7 +178,10 @@ int cbor_store_map(struct cbor_t*storage,const uint8_t additional,const int stre
 
 			list_index=&head;
 			while((list_index=list_index->next)!=NULL)
-				memcpy(destination_index++,list_index->e,sizeof*destination_index);
+			{
+				memcpy(destination_index,list_index->e,sizeof*destination_index);
+				++destination_index;
+			}
 
 			{
 				struct cbor_map_t e= {
@@ -184,10 +199,24 @@ int cbor_store_map(struct cbor_t*storage,const uint8_t additional,const int stre
 				}
 				memcpy(fresh,&e,sizeof*fresh);
 				
+				/*@-immediatetrans@*/
 				storage->next=&fresh->base;
+				/*@+immediatetrans@*/
 			}
 		}
 
+		{
+			// TODO: check for leaks
+			list_index=&head;
+			while( (list_index=list_index->next) !=NULL)
+			{
+				if(list_index->e!=NULL)free(list_index->e);
+			}
+			return EXIT_SUCCESS;
+		}
+		/*@-unreachable@*/
+		store_attempt_ret=EXIT_SUCCESS;
+		/*@+unreachable@*/
 		free:
 		{
 			list_index=&head;
@@ -199,6 +228,5 @@ int cbor_store_map(struct cbor_t*storage,const uint8_t additional,const int stre
 			return store_attempt_ret;
 		}
 	}
-	return EXIT_SUCCESS;
 }
 

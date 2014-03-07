@@ -101,7 +101,9 @@ int cbor_store_uint(struct cbor_t*storage,const uint8_t additional,const int str
 		
 		memcpy(fresh,&c,sizeof*fresh);
 
+		/*@-immediatetrans@*/
 		storage->next=&fresh->base;
+		/*@+immediatetrans@*/
 		return EXIT_SUCCESS;
 	}
 }
@@ -127,7 +129,9 @@ int cbor_store_nint(struct cbor_t*storage,const uint8_t additional, const int st
 
 		memcpy(fresh,&n,sizeof*fresh);
 
+		/*@-immediatetrans@*/
 		storage->next=&fresh->base;
+		/*@+immediatetrans@*/
 		return EXIT_SUCCESS;
 	}
 }

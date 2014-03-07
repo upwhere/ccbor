@@ -1,7 +1,7 @@
 #general compilation
 CC = gcc
 CFLAGS = -pipe -Wall -Wextra -std=c99 -pedantic-errors -Werror -O3
-CFLAGS = -pipe -Wall -Wextra -std=c99 -pedantic -g
+CFLAGS = -pipe -Wall -Wextra -std=c99 -pedantic-errors -Werror -g
 
 LNFLAGS =
 
@@ -11,7 +11,7 @@ ARFLAGS = rcv
 
 # code-correctness checks
 LINT = splint
-LINTFLAGS = +quiet +weak -warnposix -duplicatequals
+LINTFLAGS = +quiet -mustfreefresh -mustfreeonly -compdestroy -warnposix -duplicatequals
 
 # Set RANLIB to ranlib on systems that require it (Sun OS < 4, Mac OSX)
 RANLIB = ranlib
@@ -26,8 +26,6 @@ SUFFIXES =
 
 # compilation units
 OBJS = ccbor.o cbor_int.o cbor_str.o cbor_arr.o cbor_map.o
-
-LIBRARIES = 
 
 # rules
 .PHONY : all
@@ -45,8 +43,6 @@ test_program : program.o ccbor.a
 ccbor.a : $(OBJS)
 	$(AR) $(ARFLAGS) ccbor.a $(OBJS)
 	$(RANLIB) ccbor.a
-
-program.o : ccbor.a
 
 %.o : %.c %.h.gch
 	-$(LINT) $(LINTFLAGS) $<

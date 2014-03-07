@@ -23,9 +23,14 @@ static int cbor_store_definite_arr(struct cbor_t*storage, const uint8_t addition
 		int store_status;
 		size_t i;
 
+		if(array==NULL)
+		{
+			return 1;
+		}
+
 		for(i=0;i<length;i++)
 		{
-			uint8_t item;
+			uint8_t item=0;
 			if(read(stream,&item,sizeof item)<(ssize_t)sizeof item)
 			{
 				free(array);
@@ -36,6 +41,12 @@ static int cbor_store_definite_arr(struct cbor_t*storage, const uint8_t addition
 			{
 				free(array);
 				return store_status;
+			}
+
+			if(element->next==NULL)
+			{
+				free(array);
+				return 2;
 			}
 
 			array[i]=element->next;
@@ -59,7 +70,9 @@ static int cbor_store_definite_arr(struct cbor_t*storage, const uint8_t addition
 
 			memcpy(fresh, &a,sizeof*fresh);
 
+			/*@-immediatetrans@*/
 			storage->next=&fresh->base;
+			/*@+immediatetrans@*/
 		}
 
 		return EXIT_SUCCESS;
@@ -83,7 +96,7 @@ int cbor_store_arr(struct cbor_t*storage,const uint8_t additional,const int stre
 
 		while(true)
 		{
-			uint8_t item;
+			uint8_t item=0;
 			int store_attempt_ret;
 			if(read(stream,&item,sizeof item) < (ssize_t) sizeof item)return 3;
 
@@ -126,7 +139,10 @@ int cbor_store_arr(struct cbor_t*storage,const uint8_t additional,const int stre
 			}
 
 			memcpy(fresh, &a,sizeof*fresh);
+
+			/*@-immediatetrans@*/
 			storage->next=&fresh->base;
+			/*@+immediatetrans@*/
 		}
 	}
 	return EXIT_SUCCESS;

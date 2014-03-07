@@ -33,7 +33,7 @@ struct cbor_tag_t {
 	const uint64_t value;
 };
 
-int cbor_store_tag(struct cbor_t*storage,const uint8_t additional, const int stream)
+static int cbor_store_tag(struct cbor_t*storage,const uint8_t additional, const int stream)
 {
 	if(storage==NULL || storage->next!=NULL)return 2;
 	{
@@ -49,11 +49,14 @@ int cbor_store_tag(struct cbor_t*storage,const uint8_t additional, const int str
 
 		memcpy(fresh,&t,sizeof*fresh);
 
-		storage->next=&fresh->base;
+		/*@-immediatetrans@*/
+		storage->next=&(fresh->base);
+		/*@+immediatetrans@*/
 		return EXIT_SUCCESS;
 	}
 }
 
+/*@-nullassign@*/
 int(*const cbor_store[cbor_major_t_max])(struct cbor_t*,const uint8_t,const int stream) = {
 	&cbor_store_uint,
 	&cbor_store_nint,
@@ -64,6 +67,7 @@ int(*const cbor_store[cbor_major_t_max])(struct cbor_t*,const uint8_t,const int 
 	&cbor_store_tag,
 	NULL,//&cbor_store_flt,
 };
+/*@+nullassign@*/
 
 int decode(const int stream,struct cbor_t*storage)
 {
@@ -73,7 +77,7 @@ int decode(const int stream,struct cbor_t*storage)
 		struct cbor_t*store=storage;
 		do
 		{
-			uint8_t item;
+			uint8_t item=0;
 
 			if(read(stream,&item,sizeof item) < 1 )
 			{

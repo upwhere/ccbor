@@ -26,17 +26,23 @@ typedef enum cbor_additional_t
 
 struct cbor_t {
 	const cbor_major_t major;
+	/*@only@*/
+	/*@null@*/
 	struct cbor_t*next;
 };
+
+/*@-exportlocal@*/
 
 extern uint8_t cbor_major_of(uint8_t);
 extern uint8_t cbor_additional_of(uint8_t);
 
-extern void recursive_naive_cbor_free(struct cbor_t*);
+extern void recursive_naive_cbor_free(/*@only@*//*@null@*/struct cbor_t*);
 
 extern int(*const cbor_store[cbor_major_t_max])(struct cbor_t*,const uint8_t,const int);
 
 extern int decode(const int stream, struct cbor_t*);
+
+/*@+exportlocal@*/
 
 #define cbor_BREAK 0xff
 

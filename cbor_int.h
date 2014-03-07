@@ -15,10 +15,14 @@ struct cbor_nint_t {
 	const uint64_t nvalue;
 };
 
+/*@-exportlocal@*/
+
 extern uint64_t cbor_value_uint(const uint8_t,const int);
 
 extern int cbor_store_uint(struct cbor_t*,const uint8_t,const int);
 
 extern int cbor_store_nint(struct cbor_t*,const uint8_t, const int);
+
+/*@+exportlocal@*/
 
 #endif
