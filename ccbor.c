@@ -6,7 +6,7 @@
 
 #define host_little_endian 1
 
-static uint16_t be16toh(const uint16_t bigendian)
+static uint16_t be16to_h(const uint16_t bigendian)
 {
 	#if host_little_endian
 	return ((bigendian&0x00ff) <<8) |
@@ -16,7 +16,7 @@ static uint16_t be16toh(const uint16_t bigendian)
 	return bigendian;
 }
 
-static uint32_t be32toh(const uint32_t bigendian)
+static uint32_t be32to_h(const uint32_t bigendian)
 {
 	#if host_little_endian
 	return ((bigendian&0x000000ff) <<24) |
@@ -28,7 +28,7 @@ static uint32_t be32toh(const uint32_t bigendian)
 	return bigendian;
 }
 
-static uint64_t be64toh(const uint64_t bigendian)
+static uint64_t be64to_h(const uint64_t bigendian)
 {
 	#if host_little_endian
 	return ((bigendian&0x00000000000000ff) <<56) |
@@ -102,21 +102,21 @@ uint64_t cbor_value_uint(const uint8_t additional,const int stream)
 		{
 			uint16_t v16=0;
 			(void)read(stream,&v16,sizeof(uint16_t));
-			v=be16toh(v16);
+			v=be16to_h(v16);
 			break;
 		}
 		case 26:
 		{
 			uint32_t v32=0;
 			(void)read(stream,&v32,sizeof(uint32_t));
-			v=be32toh(v32);
+			v=be32to_h(v32);
 			break;
 		}
 		case 27:
 		{
 			uint64_t v64=0;
 			(void)read(stream,&v64,sizeof(uint64_t));
-			v=be64toh(v64);
+			v=be64to_h(v64);
 			break;
 		}
 		case 28:
@@ -521,8 +521,8 @@ static int cbor_store_mapentry(struct cbor_mapentry_t*storage,const uint8_t key,
 		pair=&head;
 		{
 			struct cbor_mapentry_t e= {
-				.key=(pair=pair->next),
-				.value=(pair=pair->next),
+				.key=pair->next,
+				.value=pair->next->next,
 			};
 
 			memcpy(storage,&e,sizeof*storage);
@@ -603,7 +603,7 @@ static int cbor_store_map(struct cbor_t*storage,const uint8_t additional,const i
 			.next=NULL,
 		} , *list_index=&head;
 
-		size_t entry_count=0;
+		long unsigned int entry_count=0;
 		int store_attempt_ret;
 
 		// Grab pairs from stream
@@ -619,32 +619,39 @@ static int cbor_store_map(struct cbor_t*storage,const uint8_t additional,const i
 
 			if(item==cbor_BREAK)break;
 
-			if( (store_attempt_ret=cbor_store_mapentry(list_index->e,item,stream) ) !=EXIT_SUCCESS)goto free;
-			
 			list_index->next=malloc(sizeof list_index->next);
-			if(list_index->e==NULL)
+			if(list_index->next==NULL)
 			{
 				store_attempt_ret=1;
 				goto free;
 			}
 			list_index=list_index->next;
+			
+			list_index->e=malloc(sizeof list_index->e);
+			if(list_index->e==NULL)
+			{
+				store_attempt_ret=1;
+				goto free;
+			}
+
+			if( (store_attempt_ret=cbor_store_mapentry(list_index->e,item,stream) ) !=EXIT_SUCCESS)goto free;
+			
 			++entry_count;
 		}
 
 		// Copy into map.
 		{
-			size_t destination_index=0;
-			struct cbor_mapentry_t**destination=malloc((sizeof destination)*entry_count);
+			struct cbor_mapentry_t*destination=malloc((sizeof*destination)*entry_count),*destination_index=destination;
 			if(destination==NULL)
 			{
 				store_attempt_ret=1;
 				goto free;
 			}
+
 			list_index=&head;
 			while((list_index=list_index->next)!=NULL)
-			{
-				destination[destination_index++]=list_index->e;
-			}
+				memcpy(destination_index++,list_index->e,sizeof*destination_index);
+
 			{
 				struct cbor_map_t e= {
 					.base= {
@@ -652,7 +659,7 @@ static int cbor_store_map(struct cbor_t*storage,const uint8_t additional,const i
 						.next=NULL,
 					},
 					.length=entry_count,
-					.map=*destination,
+					.map=destination,
 				} , *fresh=malloc(sizeof*fresh);
 				if(fresh==NULL)
 				{
@@ -660,18 +667,19 @@ static int cbor_store_map(struct cbor_t*storage,const uint8_t additional,const i
 					goto free;
 				}
 				memcpy(fresh,&e,sizeof*fresh);
+				
+				storage->next=&fresh->base;
 			}
 		}
 
 		free:
 		{
-			list_index=head.next;
-			do
+			list_index=&head;
+			while( (list_index=list_index->next) !=NULL)
 			{
 				//FIXME: deep pointers not freed.
 				if(list_index->e!=NULL)free(list_index->e);
 			}
-			while( (list_index=list_index->next) !=NULL);
 			return store_attempt_ret;
 		}
 	}
