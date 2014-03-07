@@ -59,10 +59,11 @@ static int cbor_store_definite_map(struct cbor_t*storage,const uint8_t additiona
 		struct cbor_mapentry_t*const map=malloc(length*(sizeof*map));
 		struct cbor_mapentry_t*map_index=map;
 		int store_attempt_ret;
+		size_t i;
 		if(map==NULL)return 1;
 
 		//Grab all map entries
-		for(size_t i=0;i<length;i++ )
+		for(i=0;i<length;i++ )
 		{
 			uint8_t item;
 			if(read(stream,&item,sizeof item) < (ssize_t) sizeof item)

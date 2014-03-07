@@ -109,24 +109,25 @@ int cbor_store_uint(struct cbor_t*storage,const uint8_t additional,const int str
 int cbor_store_nint(struct cbor_t*storage,const uint8_t additional, const int stream)
 {
 	if(storage==NULL || storage->next!=NULL)return 2;
-
-	struct cbor_nint_t n= {
-		.base= {
-			.major=cbor_major_nint,
-			.next=NULL,
-		},
-		.nvalue=cbor_value_uint(additional,stream),
-	},*fresh=malloc(sizeof*fresh);
-
-	if(fresh==NULL)return 1;
-	if(n.nvalue==(uint64_t)-1&&additional!=1)
 	{
-		free(fresh);
-		return 3;
+		struct cbor_nint_t n= {
+			.base= {
+				.major=cbor_major_nint,
+				.next=NULL,
+			},
+			.nvalue=cbor_value_uint(additional,stream),
+		},*fresh=malloc(sizeof*fresh);
+
+		if(fresh==NULL)return 1;
+		if(n.nvalue==(uint64_t)-1&&additional!=1)
+		{
+			free(fresh);
+			return 3;
+		}
+
+		memcpy(fresh,&n,sizeof*fresh);
+
+		storage->next=&fresh->base;
+		return EXIT_SUCCESS;
 	}
-
-	memcpy(fresh,&n,sizeof*fresh);
-
-	storage->next=&fresh->base;
-	return EXIT_SUCCESS;
 }

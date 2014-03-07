@@ -10,58 +10,60 @@
 static int cbor_store_definite_arr(struct cbor_t*storage, const uint8_t additional, const int stream)
 {
 	if(storage==NULL || storage->next!=NULL)return 2;
-
-	const size_t length=cbor_value_uint(additional,stream);
-	struct cbor_t **array = malloc(length*sizeof(struct cbor_t const *));
-
-	// storage needs a head.
-	struct cbor_t head= {
-		.major=0xFF,
-		.next=NULL,
-	} , *element= &head;
-
-	int store_status;
-	
-	for(size_t i=0;i<length;i++)
 	{
-		uint8_t item;
-		if(read(stream,&item,sizeof item)<(ssize_t)sizeof item)
+		const size_t length=cbor_value_uint(additional,stream);
+		struct cbor_t **array = malloc(length*sizeof(struct cbor_t const *));
+
+		// storage needs a head.
+		struct cbor_t head= {
+			.major=0xFF,
+			.next=NULL,
+		} , *element= &head;
+
+		int store_status;
+		size_t i;
+
+		for(i=0;i<length;i++)
 		{
-			free(array);
-			return EXIT_FAILURE;
+			uint8_t item;
+			if(read(stream,&item,sizeof item)<(ssize_t)sizeof item)
+			{
+				free(array);
+				return EXIT_FAILURE;
+			}
+
+			if((store_status=cbor_store[cbor_major_of(item)](element,cbor_additional_of(item),stream))!=EXIT_SUCCESS)
+			{
+				free(array);
+				return store_status;
+			}
+
+			array[i]=element->next;
+			element->next=NULL;
+		}
+		{
+			struct cbor_arr_t a= {
+				.base= {
+					.major=cbor_major_arr,
+					.next=NULL,
+				} ,
+				.length=length,
+				.array=array,
+			} , *fresh= malloc(sizeof*fresh);
+
+			if(fresh==NULL)
+			{
+				free(array);
+				return 1;
+			}
+
+			memcpy(fresh, &a,sizeof*fresh);
+
+			storage->next=&fresh->base;
 		}
 
-		if((store_status=cbor_store[cbor_major_of(item)](element,cbor_additional_of(item),stream))!=EXIT_SUCCESS)
-		{
-			free(array);
-			return store_status;
-		}
-
-		array[i]=element->next;
-		element->next=NULL;
+		return EXIT_SUCCESS;
 	}
-	{
-		struct cbor_arr_t a= {
-			.base= {
-				.major=cbor_major_arr,
-				.next=NULL,
-			} ,
-			.length=length,
-			.array=array,
-		} , *fresh= malloc(sizeof*fresh);
-
-		if(fresh==NULL)
-		{
-			free(array);
-			return 1;
-		}
-
-		memcpy(fresh, &a,sizeof*fresh);
-
-		storage->next=&fresh->base;
-	}
-
-	return EXIT_SUCCESS;
 }
 
 int cbor_store_arr(struct cbor_t*storage,const uint8_t additional,const int stream)

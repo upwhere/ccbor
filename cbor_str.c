@@ -8,7 +8,6 @@
 #include"cbor_int.h"
 
 static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, const int stream)
-/*@globals errno@*/
 {
 	if(storage==NULL || storage->next!=NULL)return 2;
 	{
@@ -92,7 +91,7 @@ static int store_definite_bstr(struct cbor_t*storage,const uint8_t additional, c
 			free((stringlike_type*)((struct cbor_##major_shorthand##_t*)next)->string); \
 			strindex+=((struct cbor_##major_shorthand##_t*)next)->length; \
 		} \
-		if(heed_nullterm)*strindex='\0'; \
+		if(heed_nullterm)*strindex=0; \
  \
 		/* Individual strings already freed */ \
 		recursive_naive_cbor_free(indefinite.next); \
@@ -126,36 +125,36 @@ GENERATE_STORE_STRINGLIKE(bstr,uint8_t,false)
 static int store_definite_tstr(struct cbor_t*storage,const uint8_t additional, const int stream)
 {
 	if(storage==NULL || storage->next!=NULL)return 2;
-
-	/* it is assumed size_t is at least as large as uint64_t */
-	/** How many bytes follow */
-	size_t length=cbor_value_uint(additional,stream);
-
-	uint8_t*bytestring=calloc(length+1,sizeof*bytestring);
-
-	if(bytestring==NULL)return 1;
-	if(read(stream,bytestring,length)<(ssize_t)length)
 	{
-		free(bytestring);
-		return 3;
-	}
-	{
-		struct cbor_tstr_t t= {
-			.base= {
-				.major=cbor_major_tstr,
-				.next=NULL,
-			},
-			.length=length+sizeof'\0',
-			.string=(char*)bytestring,
-		},*fresh=malloc(sizeof*fresh);
+		/** How many bytes follow */
+		size_t length=cbor_value_uint(additional,stream);
 
-		if(fresh==NULL)return 1;
+		uint8_t*bytestring=calloc(length+1,sizeof*bytestring);
 
-		memcpy(fresh,&t,sizeof*fresh);
-		
-		storage->next=&fresh->base;
+		if(bytestring==NULL)return 1;
+		if(read(stream,bytestring,length)<(ssize_t)length)
+		{
+			free(bytestring);
+			return 3;
+		}
+		{
+			struct cbor_tstr_t t= {
+				.base= {
+					.major=cbor_major_tstr,
+					.next=NULL,
+				},
+				.length=length+sizeof'\0',
+				.string=(char*)bytestring,
+			},*fresh=malloc(sizeof*fresh);
+
+			if(fresh==NULL)return 1;
+
+			memcpy(fresh,&t,sizeof*fresh);
+
+			storage->next=&fresh->base;
+		}
+		return EXIT_SUCCESS;
 	}
-	return EXIT_SUCCESS;
 }
 
 GENERATE_STORE_STRINGLIKE(tstr,char,true)

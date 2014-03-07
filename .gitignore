@@ -1,0 +1,7 @@
+*.c
+*.o
+*.a
+
+test.cbor.dat
+test_program
+
