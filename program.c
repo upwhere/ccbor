@@ -1,9 +1,14 @@
-#include"ccbor.c"
+#include"ccbor.h"
 #include<stdio.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
-void print_cbor_t(struct cbor_t*item,const int nindent)
+#include"cbor_int.h"
+#include"cbor_str.h"
+#include"cbor_arr.h"
+#include"cbor_map.h"
+
+static void print_cbor_t(struct cbor_t*item,const int nindent)
 {
 	char indent[nindent+1];
 	for(int i=0;i<nindent;i++ )
